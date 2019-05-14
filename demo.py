@@ -1,11 +1,11 @@
 import numpy as np
 from pydub import AudioSegment
-import random
 import IPython
 import matplotlib.mlab as mlab
 
-# BUILD THE MODEL
+from scipy.io.wavfile import write
 
+# BUILD THE MODEL
 from keras.models import load_model
 
 # LOAD A PRE-TRAIN MODEL
@@ -13,7 +13,6 @@ model = load_model('./tr_model.h5')
 
 # Detect trigger word functions
 def detect_triggerword_spectrum(x):
-    # the spectogram outputs  and we want (Tx, freqs) to input into the model
     x  = x.swapaxes(0,1)
     x = np.expand_dims(x, axis=0)
     predictions = model.predict(x)
@@ -34,25 +33,25 @@ def has_new_triggerword(predictions, chunk_duration, feed_duration, threshold=0.
 
 # RECORD AUDIO STREAM FROM MIC
 
-chunk_duration = 0.5 # Each read length in seconds from mic.
-fs = 44100 # sampling rate for mic
-chunk_samples = int(fs * chunk_duration) # Each read length in number of samples.
+chunk_duration = 0.5
+fs = 44100
+chunk_samples = int(fs * chunk_duration)
 
-# Each model input data duration in seconds, need to be an integer numbers of chunk_duration
 feed_duration = 10
 feed_samples = int(fs * feed_duration)
 
 assert feed_duration/chunk_duration == int(feed_duration/chunk_duration)
 
 def get_spectrogram(data):
-    nfft = 200 # Length of each window segment
-    fs = 8000 # Sampling frequencies
-    noverlap = 120 # Overlap between windows
+    nfft = 200
+    fs = 8000
+    noverlap = 120
     nchannels = data.ndim
     if nchannels == 1:
-        return mlab.specgram(data, nfft, fs, noverlap = noverlap)[0]
+        pxx, _, _ = mlab.specgram(data, nfft, fs, noverlap = noverlap)
     elif nchannels == 2:
-        return mlab.specgram(data[:,0], nfft, fs, noverlap = noverlap)[0]
+        pxx, _, _ = mlab.specgram(data[:,0], nfft, fs, noverlap = noverlap)
+    return pxx
 
 
 # Audio Stream
@@ -68,17 +67,15 @@ def get_audio_input_stream(callback):
         stream_callback=callback)
     return stream
 
+
 import pyaudio
 from queue import Queue
 from threading import Thread
 import time
 
-
 # Queue to communiate between the audio callback and main thread
 q = Queue()
-
 run = True
-
 silence_threshold = 100
 
 # Run the demo for a timeout seconds
@@ -93,10 +90,10 @@ def callback(in_data, frame_count, time_info, status):
         run = False
     data0 = np.frombuffer(in_data, dtype='int16')
     if np.abs(data0).mean() < silence_threshold:
-        print('-')
+        print('-',end = '')
         return (in_data, pyaudio.paContinue)
     else:
-        print('.')
+        print('.',end = '')
     data = np.append(data,data0)
     if len(data) > feed_samples:
         data = data[-feed_samples:]
@@ -114,7 +111,7 @@ try:
         preds = detect_triggerword_spectrum(spectrum)
         new_trigger = has_new_triggerword(preds, chunk_duration, feed_duration)
         if new_trigger:
-            print('1')
+            print('1',end = '')
 except (KeyboardInterrupt, SystemExit):
     stream.stop_stream()
     stream.close()
