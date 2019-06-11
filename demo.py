@@ -2,14 +2,14 @@ import numpy as np
 from pydub import AudioSegment
 import IPython
 import matplotlib.mlab as mlab
-
 from scipy.io.wavfile import write
-
-# BUILD THE MODEL
 from keras.models import load_model
 
 # LOAD A PRE-TRAIN MODEL
-model = load_model('./tr_model.h5')
+
+print("Loading model...")
+model = load_model('./my_model.h5')
+print("Loading done")
 
 # Detect trigger word functions
 def detect_triggerword_spectrum(x):
@@ -73,6 +73,10 @@ from queue import Queue
 from threading import Thread
 import time
 
+import os
+# from dotenv import load_dotenv
+# load_dotenv()
+
 # Queue to communiate between the audio callback and main thread
 q = Queue()
 run = True
@@ -85,38 +89,50 @@ timeout = time.time() + 0.5*60  # 0.5 minutes from now
 data = np.zeros(feed_samples, dtype='int16')
 
 def callback(in_data, frame_count, time_info, status):
-    global run, timeout, data, silence_threshold
-    if time.time() > timeout:
-        run = False
-    data0 = np.frombuffer(in_data, dtype='int16')
-    if np.abs(data0).mean() < silence_threshold:
-        print('-',end = '')
-        return (in_data, pyaudio.paContinue)
-    else:
-        print('.',end = '')
-    data = np.append(data,data0)
-    if len(data) > feed_samples:
-        data = data[-feed_samples:]
+	global run, timeout, data, silence_threshold, feed_samples
+	# if time.time() > timeout:
+	# 	run = False
+	data0 = np.frombuffer(in_data, dtype='int16')
+	if np.abs(data0).mean() < silence_threshold:
+		print('-',end = '')
+		return (in_data, pyaudio.paContinue)
+	else:
+		print('.',end = '')
+	data = np.append(data,data0)
+
+	if len(data) > feed_samples:
+		data = data[-feed_samples:]
         # Process data async by sending a queue.
-        q.put(data)
-    return (in_data, pyaudio.paContinue)
+		q.put(data)
+	return (in_data, pyaudio.paContinue)
 
-stream = get_audio_input_stream(callback)
-stream.start_stream()
+if __name__ == "__main__":
 
-try:
-    while run:
-        data = q.get()
-        spectrum = get_spectrogram(data)
-        preds = detect_triggerword_spectrum(spectrum)
-        new_trigger = has_new_triggerword(preds, chunk_duration, feed_duration)
-        if new_trigger:
-            print('1',end = '')
-except (KeyboardInterrupt, SystemExit):
-    stream.stop_stream()
-    stream.close()
-    timeout = time.time()
-    run = False
+	try:
+		print("Starting...")
+		stream = get_audio_input_stream(callback)
+		stream.start_stream()
+		print("Stream opened")
 
-stream.stop_stream()
-stream.close()
+		while run:
+			if (q.empty()):
+				continue
+			data = q.get()
+			spectrum = get_spectrogram(data)
+			preds = detect_triggerword_spectrum(spectrum)
+			new_trigger = has_new_triggerword(preds, chunk_duration, feed_duration)
+			print("")
+			if new_trigger:
+				print('1',end = '')
+				os.system("C:/Users/dgbttn/AppData/Local/CocCoc/Browser/Application/browser.exe")
+
+	except (KeyboardInterrupt, SystemExit):
+	    stream.stop_stream()
+	    stream.close()
+	    timeout = time.time()
+	    run = False
+
+	stream.stop_stream()
+	stream.close()
+
+	print("Finish!")
